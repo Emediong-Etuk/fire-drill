@@ -2,6 +2,7 @@ import type { BudgetTracker } from "./budget.js";
 import { costFromBody, type Credential, errorCode, errorDetail, type GatewayClient, TransportError } from "./gateway/client.js";
 import type { Leg } from "./gateway/policy.js";
 import type { CodeRun } from "./sandbox.js";
+import { fmtMoney } from "./report/model.js";
 import type { Sample } from "./samples.js";
 
 export interface Attempt {
@@ -98,7 +99,7 @@ export async function replay(opts: ReplayOptions): Promise<Attempt[]> {
     }
     const token = opts.budget.reserve();
     if (token === null) {
-      stopReason = `client-side budget of $${opts.budget.capUsd.toFixed(2)} reached`;
+      stopReason = `client-side budget of $${fmtMoney(opts.budget.capUsd)} reached`;
       attempts.push(skip(job, stopReason));
       return;
     }

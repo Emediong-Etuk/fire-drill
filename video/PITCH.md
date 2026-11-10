@@ -33,7 +33,7 @@ terminal in `fire-drill/`.
 | 0:35 | Terminal, full screen, prompt empty. Type command 1. |
 | 0:41 | The drill runs; the "Drilling" line lists the three legs. |
 | 0:50 | The table appears. Highlight rows 1 and 3 (green 100%). |
-| 0:55 | Highlight row 2 (red 80%, `tool 1`) and the Failures block: `missing "unit"` and the `{"city": "Lag{}"}` excerpt. |
+| 0:55 | Highlight row 2 (red 80%, `tool 1`) and the Failures block: the `missing "unit"` message and the excerpt under it. |
 | 1:04 | Highlight the `p50`, `$/req` and `$/1k` columns. |
 | 1:11 | Highlight the last line, the recommendation. |
 | 1:17 | Type command 2; `1` appears. |
@@ -75,24 +75,25 @@ Drilling "demo-chat" on http://localhost:8000: 1. openrouter:openai/gpt-4o-mini 
 Fire Drill: "demo-chat"  5 samples x 3 legs x 1 run
 
 #  Role        Model                                        Pass       Failures            p50     $/req     $/1k
-1  primary     openrouter:openai/gpt-4o-mini                5/5 100%   -                  1.1s $0.000026  $0.0256
-2  failover 1  openrouter:google/gemma-3-12b-it             4/5 80%    tool 1            848ms $0.000010  $0.0100
-3  failover 2  openrouter:…/mistral-small-3.2-24b-instruct  5/5 100%   -                 672ms $0.000013  $0.0132
+1  primary     openrouter:openai/gpt-4o-mini                5/5 100%   -                  1.2s $0.000025  $0.0248
+2  failover 1  openrouter:google/gemma-3-12b-it             4/5 80%    tool 1            985ms $0.000010  $0.0096
+3  failover 2  openrouter:…/mistral-small-3.2-24b-instruct  5/5 100%   -                 798ms $0.000012  $0.0124
 
 Failures
-  leg 2  sample 4  tool  "get_weather" arguments break its schema: missing "unit"
-      "{"city": "Lag{}"}"
+  leg 2  sample 4  tool  "get_weather" arguments break its schema: missing "city"; missing "unit"
+      "{}"
 
-! Web search or fetch is enabled in this workspace. Replays never attach web tools, but your app's real requests might.
+! Web search or fetch is enabled in this workspace. Replays never attach web tools; --lock-down switches them off for the drill.
 
-Spent $0.000244 of $0.50 (gateway recorded $0.000244). Drill key revoked. 5.7s.
+Spent $0.000234 of $0.50 (gateway recorded $0.000234). Drill key revoked. 16.4s.
 Leg 2 fails 1/5 tool-call checks. Move it below leg 3 or remove it.
 ```
 
-The run takes about 6 seconds. The narration from 0:41 to 0:50 covers it.
+The run took 6 to 16 seconds in testing, depending on OpenRouter. The narration from 0:41 to
+0:50 covers about 9 seconds; if a take runs longer, cut the wait in editing.
 
-Gemma's broken arguments vary between takes. Seen so far: `missing "unit"` with the
-excerpt `{"city": "Lag{}"}`, and `missing "city"; missing "unit"` with `{}`. The 0:55
+Gemma's broken arguments vary between takes. Seen so far: `missing "city"; missing "unit"` with
+the excerpt `{}` (the run above), and `missing "unit"` with `{"city": "Lag{}"}`. The 0:55
 line ("calls get_weather without the required unit") is true for both.
 
 **Command 2** (on camera):

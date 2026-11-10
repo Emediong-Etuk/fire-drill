@@ -11,10 +11,16 @@ flowchart LR
     cli --> replay["<b>Replayer</b><br/>replay.ts · budget.ts"]
     replay --> check["<b>Checker</b><br/>contract/check.ts"]
     derive --> check
-    check --> report["<b>Reporter</b><br/>report/table.ts · trace.ts"]
+    check --> report["<b>Reporter</b><br/>report/table.ts · json.ts · trace.ts"]
+    replay -. "--run-code" .-> sandbox["<b>Sandbox check</b><br/>sandbox.ts"]
+    sandbox --> check
+    key -. "--lock-down" .-> lock["<b>Web lock-down</b><br/>gateway/workspace.ts"]
+    rec["<b>Recorder</b> (--record)<br/>record.ts, 127.0.0.1 only"] --> load
     pre --> client
     legs --> client
     key --> client
+    sandbox --> client
+    lock --> client
     replay --> client["<b>Gateway client</b><br/>gateway/client.ts<br/>signs each call: user, admin or drill key"]
   end
 
@@ -25,7 +31,8 @@ flowchart LR
     otari["/api/v1"] --- rp["Routing policies<br/>GET /routing/policies"]
     otari --- vk["Virtual keys + budgets<br/>/keys · /users · /budgets"]
     otari --- ut["Usage tracking<br/>usage.cost_usd · /key/budget"]
-    otari --- bt["Built-in tools<br/>GET /tools"]
+    otari --- bt["Built-in tools<br/>GET /tools · POST /code/execute"]
+    otari --- wp["Workspace policies<br/>/workspaces/{id}/web-search"]
   end
 
   otari --> prov(["Model providers<br/>OpenAI · OpenRouter · ..."])

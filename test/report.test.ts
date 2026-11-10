@@ -53,3 +53,17 @@ describe("median", () => {
     expect(median([])).toBeNull();
   });
 });
+
+describe("recommend with requests that were not sent", () => {
+  it("never blames a leg for requests the budget stopped", () => {
+    const legs = [leg(1, 5, 5), leg(2, 3, 5, { skipped: 2 }), leg(3, 0, 5, { skipped: 5 })];
+    expect(recommend(legs, 100)).toBe("The drill stopped before every request was sent. Raise --budget or lower --runs and run it again.");
+  });
+
+  it("ranks on real failures and says the drill was incomplete", () => {
+    const legs = [leg(1, 5, 5), leg(2, 4, 5, { tool_call: 1 }), leg(3, 0, 5, { skipped: 5 })];
+    expect(recommend(legs, 100)).toBe(
+      "Leg 2 fails 1/5 tool-call checks. Remove it, or move it below the legs that pass. Some requests were not sent, so raise --budget for a full drill.",
+    );
+  });
+});

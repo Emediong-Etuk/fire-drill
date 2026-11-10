@@ -133,7 +133,7 @@ describe("budget enforcement", () => {
     expect(code).toBe(1);
     const served = gw!.calls.filter((c) => c.path === "/api/v1/chat/completions").length;
     expect(served).toBeLessThan(6);
-    expect(stdout).toMatch(/not sent: (the gateway refused on the drill key's budget|client-side budget of \$0\.00 reached)/);
+    expect(stdout).toMatch(/not sent: (the gateway refused on the drill key's budget|client-side budget of \$0\.0010 reached)/);
     expectCleanedUp(gw!);
   });
 
@@ -141,9 +141,9 @@ describe("budget enforcement", () => {
     const url = await startGateway({ costUsd: 0.0004 });
     const { code, stdout } = await drill({ gateway: url, key: USER, useExistingKey: true, legs: "good:a,good:b", budget: "0.001", concurrency: "1" });
     expect(code).toBe(1);
-    const spent = Number(/Spent \$([0-9.]+) of \$0\.00/.exec(stdout)?.[1]);
+    const spent = Number(/Spent \$([0-9.]+) of \$0\.0010/.exec(stdout)?.[1]);
     expect(spent).toBeLessThanOrEqual(0.001);
-    expect(stdout).toContain("client-side budget of $0.00 reached");
+    expect(stdout).toContain("client-side budget of $0.0010 reached");
     expect(gw!.keys.size).toBe(0);
   });
 });

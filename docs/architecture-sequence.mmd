@@ -16,6 +16,10 @@ sequenceDiagram
   FD->>O: POST /api/v1/keys {allowed_models, expires_at} (admin key)
   O-->>FD: drill key (registered as a secret, never printed)
   FD->>O: GET /api/v1/tools (drill key): web tools on?
+  opt --lock-down
+    FD->>O: GET /api/v1/keys/{id} (admin key): the key's workspace
+    FD->>O: GET + PUT /api/v1/workspaces/{ws}/web-search {enabled: false} (admin key)
+  end
   loop every sample on every leg, primary first, 3 in flight
     FD->>O: POST /api/v1/chat/completions {model: leg} (drill key)
     O->>P: the leg's model
@@ -23,7 +27,17 @@ sequenceDiagram
     O-->>FD: body + usage.cost_usd, Otari-Provider / Otari-Model
     Note over FD,O: check the contract, add the cost to the client-side total
   end
+  opt --run-code
+    FD->>O: GET /api/v1/pricing/otari:code_execution (drill key)
+    loop each answer with a Python block
+      FD->>O: POST /api/v1/code/execute {code} (drill key)
+      Note over FD,O: runs in Otari's sandbox, never on this machine
+    end
+  end
   FD->>O: GET /api/v1/key/budget (drill key): gateway-recorded spend
+  opt --lock-down
+    FD->>O: PUT (old values) or DELETE /api/v1/workspaces/{ws}/web-search (admin key)
+  end
   FD->>O: DELETE /api/v1/keys/{id} (admin key)
   FD->>O: DELETE /api/v1/users/{id} (admin key)
   FD->>O: DELETE /api/v1/budgets/{id} (admin key)

@@ -166,19 +166,23 @@ export function recommend(legs: LegReport[], threshold: number): string {
       ? `${base} Cheapest is leg ${cheapest.index} (${cheapest.model}) at $${fmtMoney(cheapest.projectedPer1kUsd!)} per 1,000 requests.`
       : base;
   }
-  if (failing.every((l) => (l.failuresByType.skipped ?? 0) === l.total)) {
-    return "The drill stopped before these legs ran. Raise --budget or lower --runs and run it again.";
+  // A request that was never sent says nothing about its leg: rank on real failures only.
+  const realFailures = (l: LegReport) => Object.entries(l.failuresByType).filter(([t]) => t !== "skipped") as Array<[FailureType, number]>;
+  const broken = failing.filter((l) => realFailures(l).length > 0);
+  if (broken.length === 0) {
+    return "The drill stopped before every request was sent. Raise --budget or lower --runs and run it again.";
   }
-  const worst = [...failing].sort((a, b) => a.passRate - b.passRate || b.index - a.index)[0]!;
-  const [type, count] = Object.entries(worst.failuresByType).sort((a, b) => b[1] - a[1])[0] as [FailureType, number];
+  const incomplete = legs.some((l) => (l.failuresByType.skipped ?? 0) > 0) ? " Some requests were not sent, so raise --budget for a full drill." : "";
+  const worst = [...broken].sort((a, b) => a.passRate - b.passRate || b.index - a.index)[0]!;
+  const [type, count] = realFailures(worst).sort((a, b) => b[1] - a[1])[0]!;
   const topCode = Object.entries(worst.errorCodes).sort((a, b) => b[1] - a[1])[0];
   const label = type === "http" && topCode ? `requests (Otari: ${topCode[0]})` : TYPE_LABEL[type];
   const what = `Leg ${worst.index} fails ${count}/${worst.total} ${label}.`;
-  if (worst.index === 1) return `${what} It is the primary: fix the model choice or the request before relying on this policy.`;
+  if (worst.index === 1) return `${what} It is the primary: fix the model choice or the request before relying on this policy.${incomplete}`;
   const passingAfter = legs.filter((l) => l.index > worst.index && l.passRate >= threshold);
-  if (passingAfter.length) return `${what} Move it below leg ${passingAfter[passingAfter.length - 1]!.index} or remove it.`;
-  if (worst.index === legs[legs.length - 1]!.index) return `${what} Remove it or replace it with a model that passes.`;
-  return `${what} Remove it, or move it below the legs that pass.`;
+  if (passingAfter.length) return `${what} Move it below leg ${passingAfter[passingAfter.length - 1]!.index} or remove it.${incomplete}`;
+  if (worst.index === legs[legs.length - 1]!.index) return `${what} Remove it or replace it with a model that passes.${incomplete}`;
+  return `${what} Remove it, or move it below the legs that pass.${incomplete}`;
 }
 
 export function fmtMoney(usd: number): string {

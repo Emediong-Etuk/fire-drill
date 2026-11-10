@@ -30,30 +30,31 @@ A real run against a local Otari with three real models behind `demo-chat`
 (`demo/run-demo.sh` sets this up):
 
 ```text
-$ firedrill demo-chat --samples demo/samples.jsonl --budget 0.10
+$ firedrill demo-chat --samples demo/samples.jsonl
 Drilling "demo-chat" on http://localhost:8000: 1. openrouter:openai/gpt-4o-mini  2. openrouter:google/gemma-3-12b-it  3. openrouter:mistralai/mistral-small-3.2-24b-instruct
 
 Fire Drill: "demo-chat"  5 samples x 3 legs x 1 run
 
 #  Role        Model                                        Pass       Failures            p50     $/req     $/1k
-1  primary     openrouter:openai/gpt-4o-mini                5/5 100%   -                  1.2s $0.000026  $0.0256
-2  failover 1  openrouter:google/gemma-3-12b-it             4/5 80%    tool 1             1.1s $0.000010  $0.0100
-3  failover 2  openrouter:…/mistral-small-3.2-24b-instruct  5/5 100%   -                 818ms $0.000011  $0.0112
+1  primary     openrouter:openai/gpt-4o-mini                5/5 100%   -                  1.2s $0.000025  $0.0248
+2  failover 1  openrouter:google/gemma-3-12b-it             4/5 80%    tool 1            985ms $0.000010  $0.0096
+3  failover 2  openrouter:…/mistral-small-3.2-24b-instruct  5/5 100%   -                 798ms $0.000012  $0.0124
 
 Failures
-  leg 2  sample 4  tool  "get_weather" arguments break its schema: missing "unit"
-      "{"city": "Lag{}"}"
+  leg 2  sample 4  tool  "get_weather" arguments break its schema: missing "city"; missing "unit"
+      "{}"
 
-! Web search or fetch is enabled in this workspace. Replays never attach web tools, but your app's real requests might.
+! Web search or fetch is enabled in this workspace. Replays never attach web tools; --lock-down switches them off for the drill.
 
-Spent $0.000234 of $0.10 (gateway recorded $0.000234). Drill key revoked. 6.3s.
+Spent $0.000234 of $0.50 (gateway recorded $0.000234). Drill key revoked. 16.4s.
 Leg 2 fails 1/5 tool-call checks. Move it below leg 3 or remove it.
 $ echo $?
 1
 ```
 
-Gemma 3 12B passed every JSON-schema sample but sent `get_weather` a broken `city` and
-no `unit` (it did so on every one of 30+ tries while this demo was built). If the primary went
+Gemma 3 12B passed every JSON-schema sample but called `get_weather` without its required
+arguments (empty here; other runs sent a broken `city` and no `unit`). It did so on every
+one of 30+ tries while this demo was built. If the primary went
 down, every weather question would have failed. Exit codes: `0` all legs at or above
 `--fail-under`, `1` a leg below it, `2` the drill could not run.
 
@@ -90,9 +91,13 @@ they happen.
 
 6. **Replay.** Every sample down every leg on the drill key, primary first, 3 at a time,
    60 s timeout, one retry on 429/5xx.
-7. **Report.** Pass rate, failures by check, median latency, cost per request and per
+7. **Sandbox check (`--run-code`).** The first fenced Python block of each answer is sent
+   to `POST /api/v1/code/execute` on the drill key. It runs in Otari's sandbox, never on
+   your machine. A non-zero exit fails the leg (`code` in the table).
+8. **Report.** Pass rate, failures by check, median latency, cost per request and per
    1,000 requests, each failure with a redacted excerpt, and one recommendation.
-8. **Revoke** the key, the user and the budget, always.
+   `--json` prints the same data as JSON.
+9. **Revoke** the key, the user and the budget, always.
 
 ## How each Otari feature is used
 
@@ -102,7 +107,8 @@ they happen.
 | **Virtual keys** | Mints a per-run key with `POST /api/v1/keys`: model allow-list = the legs, `expires_at` minutes away. Deletes it with `DELETE /api/v1/keys/{id}`. |
 | **Budgets** | `POST /api/v1/budgets` with `max_budget` = `--budget`, attached to a per-run user (`POST /api/v1/users`). The gateway refuses past the cap with `403 budget_exceeded`. |
 | **Usage tracking** | Reads cost from `usage.cost_usd` on every response, falls back to `GET /api/v1/usage/requests/{id}`, and checks the total against `GET /api/v1/key/budget`. Every replay is tagged in `metadata` (`firedrill_run`, `firedrill_leg`, `firedrill_sample`), so the drill is filterable on Otari's Overview. |
-| **Built-in tools** | `GET /api/v1/tools` in preflight; warns when the drill key's workspace has web search or fetch on. |
+| **Code execution** | `--run-code` runs model-written Python with `POST /api/v1/code/execute` (no model involved), priced from `GET /api/v1/pricing/otari:code_execution` so the client-side total matches the gateway. |
+| **Workspace policies** | `GET /api/v1/tools` on the drill key shows whether its workspace allows web search or fetch, and Fire Drill warns if so. `--lock-down` saves `/api/v1/workspaces/{id}/web-search`, sets `enabled: false` for the drill, and puts the old values back (or deletes the row it created) afterwards. |
 | **Served-model headers** | `Otari-Provider` and `Otari-Model` prove which model answered, since the body keeps the requested name. |
 
 ## Safety model
@@ -121,13 +127,16 @@ Enforced in code and covered by tests:
   client-side running total that reserves an estimate before each request and stops
   before the cap.
 - **No web tools on replays.** Only `function` tools are sent; gateway web tools, MCP
-  servers and provider-native tools are stripped from samples.
+  servers and provider-native tools are stripped from samples. A workspace policy is
+  changed only with `--lock-down`, and restored in the same `finally` that revokes the key.
 - **No local execution of model output:** no `eval`, no `child_process`, no `vm`. ESLint
-  rules in `eslint.config.js` fail the build if `src/` imports them.
+  rules in `eslint.config.js` fail the build if `src/` imports them. `--run-code` sends
+  code to the gateway's sandbox only.
 - **No telemetry.** The only network calls go to `--gateway`, with redirects refused so a
   key cannot follow one to another host.
-- **Files are private.** Samples written by `init` are `0600`, and `.gitignore` covers
-  samples and reports.
+- **Files are private.** Samples written by `init` or `--record`, and reports written by
+  `--out`, are `0600`; `.gitignore` covers them. The recorder listens on 127.0.0.1 only
+  and never stores the `Authorization` header or a response.
 
 ## Options
 
@@ -146,6 +155,13 @@ firedrill <alias> [options]
   --use-existing-key     run on --key instead of minting (client-side budget only)
   --concurrency <n>      requests in flight, default 3
   --timeout <seconds>    per-request timeout, default 60
+  --run-code             run each answer's first Python block in Otari's sandbox
+  --lock-down            switch the workspace's web search and fetch off for the drill,
+                         then restore them
+  --json                 print the report as JSON on stdout
+  --out <file>           also write the JSON report to this file (0600)
+  --record [port]        instead of drilling, record requests to <alias> into --samples
+                         through a pass-through on 127.0.0.1 (default port 8787)
   --trace                print each gateway call: step, method, path, status, latency,
                          cost and which credential signed it (never its value)
 firedrill init [--samples <file>] [--force]
@@ -197,16 +213,28 @@ failing. If you use it, say so: it is registered in Otari as the named provider
 - **Chat Completions only**, not streamed. Messages and Responses requests are not replayed.
 - **Only `function` tools** are checked; multi-turn tool loops are replayed as recorded.
 - **Contracts are structural.** A leg that returns valid but wrong JSON passes.
+- **`--run-code` runs only the first Python block** of each answer, with a 10 s limit, and
+  passes when it exits 0. It does not check what the code prints.
 - **Refusal detection is a heuristic** (the `refusal` field plus common phrasings).
 - **The drill key's expiry is capped at 60 minutes**, so very large drills can outlive it.
 - **Costs** are only as good as Otari's pricing for each model. An unpriced model is
   refused by Otari (`pricing_required`) and shows up as a failing leg.
 
+## Record samples from your app
+
+```bash
+firedrill chat --record 8787 --samples samples.jsonl
+```
+
+Point your app's OpenAI base URL at `http://127.0.0.1:8787/api/v1` and use it as usual.
+Every request is forwarded to the gateway unchanged, with your app's own key. Each chat
+completion sent to `chat` is appended to `samples.jsonl`, stripped and redacted like any
+sample. Ctrl-C stops it.
+
 ## Roadmap
 
 - Replay Messages and Responses requests, and streamed responses.
 - Semantic checks: compare each leg's answer with the primary's, beyond structure.
-- A pass-through recorder that writes samples from live traffic.
 - Read policies through the organization routes for teams without the master key.
 
 ## Development

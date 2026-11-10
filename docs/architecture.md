@@ -28,10 +28,16 @@ flowchart LR
     cli --> replay["<b>Replayer</b><br/>replay.ts · budget.ts"]
     replay --> check["<b>Checker</b><br/>contract/check.ts"]
     derive --> check
-    check --> report["<b>Reporter</b><br/>report/table.ts · trace.ts"]
+    check --> report["<b>Reporter</b><br/>report/table.ts · json.ts · trace.ts"]
+    replay -. "--run-code" .-> sandbox["<b>Sandbox check</b><br/>sandbox.ts"]
+    sandbox --> check
+    key -. "--lock-down" .-> lock["<b>Web lock-down</b><br/>gateway/workspace.ts"]
+    rec["<b>Recorder</b> (--record)<br/>record.ts, 127.0.0.1 only"] --> load
     pre --> client
     legs --> client
     key --> client
+    sandbox --> client
+    lock --> client
     replay --> client["<b>Gateway client</b><br/>gateway/client.ts<br/>signs each call: user, admin or drill key"]
   end
 
@@ -42,7 +48,8 @@ flowchart LR
     otari["/api/v1"] --- rp["Routing policies<br/>GET /routing/policies"]
     otari --- vk["Virtual keys + budgets<br/>/keys · /users · /budgets"]
     otari --- ut["Usage tracking<br/>usage.cost_usd · /key/budget"]
-    otari --- bt["Built-in tools<br/>GET /tools"]
+    otari --- bt["Built-in tools<br/>GET /tools · POST /code/execute"]
+    otari --- wp["Workspace policies<br/>/workspaces/{id}/web-search"]
   end
 
   otari --> prov(["Model providers<br/>OpenAI · OpenRouter · ..."])
@@ -59,13 +66,17 @@ flowchart LR
 | Contract deriver | `src/contract/derive.ts` | Reads what the request already demands: a JSON schema, a JSON object, tool calls, or text. |
 | Replayer | `src/replay.ts`, `src/budget.ts` | Primary first, 3 in flight, 60 s timeout, one retry; the client-side budget reserves before each send. |
 | Checker | `src/contract/check.ts` | ajv validation, tool-call checks against the primary, refusals, truncation, served model. |
-| Reporter | `src/report/*.ts`, `src/trace.ts` | Table, grouped failures, recommendation, exit code, `--trace` lines. |
+| Reporter | `src/report/*.ts`, `src/trace.ts` | Table or `--json`, grouped failures, recommendation, exit code, `--trace` lines. |
+| Sandbox check | `src/sandbox.ts` | `--run-code`: the first Python block of each answer goes to `POST /api/v1/code/execute`, priced from `otari:code_execution`. |
+| Web lock-down | `src/gateway/workspace.ts` | `--lock-down`: saves the workspace web policy, switches search and fetch off, restores it afterwards. |
+| Recorder | `src/record.ts` | `--record [port]`: a 127.0.0.1 pass-through that writes sanitized chat completions for the alias to the samples file. |
 
 ## One drill, call by call
 
 ![One drill, call by call](architecture-sequence.svg)
 
 ```mermaid
+%%{init: {"sequence": {"actorMargin": 260, "messageMargin": 28, "noteMargin": 12, "wrap": false}}}%%
 sequenceDiagram
   autonumber
   actor U as Developer
@@ -83,6 +94,10 @@ sequenceDiagram
   FD->>O: POST /api/v1/keys {allowed_models, expires_at} (admin key)
   O-->>FD: drill key (registered as a secret, never printed)
   FD->>O: GET /api/v1/tools (drill key): web tools on?
+  opt --lock-down
+    FD->>O: GET /api/v1/keys/{id} (admin key): the key's workspace
+    FD->>O: GET + PUT /api/v1/workspaces/{ws}/web-search {enabled: false} (admin key)
+  end
   loop every sample on every leg, primary first, 3 in flight
     FD->>O: POST /api/v1/chat/completions {model: leg} (drill key)
     O->>P: the leg's model
@@ -90,7 +105,17 @@ sequenceDiagram
     O-->>FD: body + usage.cost_usd, Otari-Provider / Otari-Model
     Note over FD,O: check the contract, add the cost to the client-side total
   end
+  opt --run-code
+    FD->>O: GET /api/v1/pricing/otari:code_execution (drill key)
+    loop each answer with a Python block
+      FD->>O: POST /api/v1/code/execute {code} (drill key)
+      Note over FD,O: runs in Otari's sandbox, never on this machine
+    end
+  end
   FD->>O: GET /api/v1/key/budget (drill key): gateway-recorded spend
+  opt --lock-down
+    FD->>O: PUT (old values) or DELETE /api/v1/workspaces/{ws}/web-search (admin key)
+  end
   FD->>O: DELETE /api/v1/keys/{id} (admin key)
   FD->>O: DELETE /api/v1/users/{id} (admin key)
   FD->>O: DELETE /api/v1/budgets/{id} (admin key)
@@ -107,7 +132,10 @@ sequenceDiagram
 | 6 | `POST /api/v1/keys` | admin key | nothing |
 | 7 | `GET /api/v1/tools` | drill key | nothing |
 | 8 to n | `POST /api/v1/chat/completions`, once per sample per leg per run | drill key | the model's price, as `usage.cost_usd`, charged to the drill budget |
+| opt | `GET /api/v1/keys/{id}`, then `GET` and `PUT /api/v1/workspaces/{ws}/web-search` (`--lock-down`) | admin key | nothing |
+| opt | `GET /api/v1/pricing/otari:code_execution`, then one `POST /api/v1/code/execute` per answer with a Python block (`--run-code`) | drill key | the per-call sandbox price (the demo sets $0.001) |
 | n+1 | `GET /api/v1/key/budget` | drill key | nothing |
+| opt | `PUT` (old values) or `DELETE /api/v1/workspaces/{ws}/web-search` (`--lock-down`) | admin key | nothing |
 | n+2 | `DELETE /api/v1/keys/{id}` | admin key | nothing |
 | n+3 | `DELETE /api/v1/users/{id}` | admin key | nothing |
 | n+4 | `DELETE /api/v1/budgets/{id}` | admin key | nothing |

@@ -245,20 +245,50 @@ failover in a few ways, which the README will list:
   is a 404 (`docs/api-reference.md:8-31`). `--gateway` takes the host
   (`http://localhost:8000`) and Fire Drill appends `/api/v1`.
 - Health: `GET /api/v1/health` -> `"status":"healthy"` (`self-hosted-quickstart.md:66-70`).
-- This sandbox has the Docker CLI and `dockerd` but no running daemon. I'll try to
-  start it for the live test and demo. If that fails, Otari can also run from
-  source on SQLite (`scripts/oss_edition_smoke.py` does exactly that, per
-  `AGENTS.md` "Test Notes"). Live provider legs need provider API keys, which this
-  session does not have; anything that needs them will be marked UNVERIFIED.
+- The demo ran on `mzdotai/otari:latest` with Postgres and the sandbox from Otari's
+  own `docker-compose.yml` plus `demo/docker-compose.override.yml`. In the sandbox this
+  was built in, outbound HTTPS only works through a proxy on 127.0.0.1, so the gateway
+  container ran on the host network there; the committed demo uses normal Docker
+  networking. Real legs reach models through OpenRouter.
 
-## Gaps still open (to confirm on a live gateway)
+## Confirmed on a live gateway (Otari `1726b58`, demo stack)
 
-- Whether a per-user budget with no `budget_duration_sec` enforces as a one-off
-  cap (the schema allows null; the code path suggests yes).
-- Whether `validate_allowed_models` (`routes/keys.py:328`) accepts catalog
-  spellings (`vendor/model`) in a key allow-list, or only `instance:model`.
-- How long `GET /api/v1/usage/requests/{id}` takes to stop returning 404 after a
-  response.
-- The exact error body when the drill key's budget is exhausted
-  (`403 budget_exceeded` per `docs/budgets.md:141-143`), so the report can say
-  "stopped by gateway budget" rather than "leg errored".
+- **A per-user budget with no period enforces.** A budget of $0.000001 on a user, one
+  request: `403`, `Otari-Error-Code: budget_exceeded`, `Otari-Budget-Scope: user`, body
+  `{"detail": "User '...' has $0.000001 of budget remaining, less than this request's
+  estimated cost of $0.000013. ...", "code": "budget_exceeded"}`. The hold is the full
+  `max_tokens` estimate, as `docs/routing.md:94-99` says.
+- **Key allow-lists accept `provider:vendor/model`** (`openrouter:openai/gpt-4o-mini`),
+  and the minted key served exactly those legs.
+- **Served-model headers on OpenRouter legs:** `Otari-Provider: openrouter`,
+  `Otari-Model: openai/gpt-4o-mini` (the vendor path is kept), which the loose match in
+  `src/contract/check.ts` (`expectedServed`) accepts.
+- **`usage.cost_usd` was present on every completion**, so the
+  `GET /api/v1/usage/requests/{id}` fallback never ran live. How long that route
+  returns 404 after a response is still unmeasured; Fire Drill tries it once.
+- **`GET /api/v1/key/budget`** on the drill key reported the same spend as the
+  client-side total on every run (to the micro-dollar).
+- **Deleting the key leaves the usage rows:** the Requests tab and `GET /api/v1/usage`
+  still show every replay under the drill user, with an empty API key column.
+- **Unpriced models are refused before dispatch:** `openrouter:qwen/qwen3-8b` answered
+  `402 pricing_required` under the default `require_pricing: true`.
+- **Direct sandbox runs need a price.** `otari:code_execution` must be priced (the demo
+  config sets $0.001 a run), and a `pricing:` entry needs both
+  `input_price_per_million` and `output_price_per_million` or Otari will not start.
+  An API key can read the price at `GET /api/v1/pricing/otari:code_execution`.
+  `POST /api/v1/code/execute` carries no cost in its body, so Fire Drill settles each
+  run at that price; with it, the client total matched the gateway.
+- **Web policy round trip.** The default workspace has no stored row
+  (`configured: false`); `PUT {enabled: false}` creates one, and `DELETE` returns the
+  workspace to `enabled: true`.
+- **A fake leg works as a named provider instance** (`drillfake`, `provider_type:
+  openai`), priced in `config.yml` with `import_configured_providers: false`.
+- **Otari prints a bootstrap key in its container logs** on first start, so the video
+  checklist keeps `docker compose logs` off screen.
+
+## Other decisions
+
+- The npm name `firedrill` is taken by an unrelated package, so this one is
+  `otari-firedrill` with a `firedrill` binary: `npx otari-firedrill <alias>` once
+  published.
+- `--run-code` uses `POST /api/v1/code/execute` (agreed after Step 0).

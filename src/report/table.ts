@@ -134,7 +134,7 @@ export function renderTable(report: Report, color: boolean): string {
 
   lines.push("");
   const spend =
-    `Spent $${fmtMoney(report.spentUsd)} of $${report.budgetUsd.toFixed(2)}` +
+    `Spent $${fmtMoney(report.spentUsd)} of $${fmtMoney(report.budgetUsd)}` +
     (report.gatewaySpentUsd !== null ? ` (gateway recorded $${fmtMoney(report.gatewaySpentUsd)})` : "");
   const key =
     report.drillKey.mode === "minted"

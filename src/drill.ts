@@ -9,7 +9,7 @@ import { checkHealth, checkTools } from "./gateway/tools.js";
 import { colors, type Output } from "./io.js";
 import type { DrillOptions } from "./options.js";
 import { type Attempt, replay } from "./replay.js";
-import { type DrillKeyReport, evaluate, exitCodeFor, recommend, type Report, summarizeLegs } from "./report/model.js";
+import { type DrillKeyReport, evaluate, fmtMoney, exitCodeFor, recommend, type Report, summarizeLegs } from "./report/model.js";
 import { renderJson, writePrivateFile } from "./report/json.js";
 import { renderTable } from "./report/table.js";
 import { runSandboxChecks } from "./sandbox.js";
@@ -107,7 +107,7 @@ export async function runDrill(opts: DrillOptions, output: Output): Promise<numb
       // With the drill key, /tools answers for the workspace the replays run in.
       tools = await checkTools(client, "drill");
     } else {
-      warnings.push(`Ran on your existing key: the $${opts.budget.toFixed(2)} cap was enforced client-side only.`);
+      warnings.push(`Ran on your existing key: the $${fmtMoney(opts.budget)} cap was enforced client-side only.`);
     }
     if (opts.lockDown) {
       const workspaceId = (await drillKey.workspaceId()) ?? opts.workspace ?? resolved.workspaceId;
