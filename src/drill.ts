@@ -12,6 +12,7 @@ import { type Attempt, replay } from "./replay.js";
 import { type DrillKeyReport, evaluate, exitCodeFor, recommend, type Report, summarizeLegs } from "./report/model.js";
 import { renderTable } from "./report/table.js";
 import { loadSamples } from "./samples.js";
+import { formatTrace, TRACE_HEADER } from "./trace.js";
 
 export function newRunId(): string {
   return `${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(3).toString("hex")}`;
@@ -51,6 +52,10 @@ export async function runDrill(opts: DrillOptions, output: Output): Promise<numb
   client.setKey("user", opts.key);
   client.setKey("admin", opts.adminKey);
   const warnings: string[] = [];
+  if (opts.trace) {
+    output.err(`${c.dim(TRACE_HEADER)}\n`);
+    client.onTrace((e) => output.err(`${formatTrace(e)}\n`));
+  }
 
   // 1. Preflight.
   await checkHealth(client);

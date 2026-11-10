@@ -21,7 +21,7 @@ npx otari-firedrill init && npx otari-firedrill <policy-name>
 
 `init` writes `samples.jsonl` with three generic requests (one JSON schema, one tool
 call, one plain text). Replace them with real request bodies from your app for a real
-answer. Until the package is on npm, run it from a clone: `npm install -g .` and then
+answer. Until the package is on npm, run it from a clone: `npm ci && npm install -g .`, then
 `firedrill init && firedrill <policy-name>`.
 
 ## What a drill looks like
@@ -58,6 +58,14 @@ down, every weather question would have failed. Exit codes: `0` all legs at or a
 `--fail-under`, `1` a leg below it, `2` the drill could not run.
 
 ## How it works
+
+![Fire Drill components](docs/architecture-components.svg)
+
+![One drill, call by call](docs/architecture-sequence.svg)
+
+The diagrams' sources and a table of every gateway call, its credential and its cost
+are in [docs/architecture.md](docs/architecture.md). `--trace` prints the same calls as
+they happen.
 
 1. **Preflight.** `GET /api/v1/health`, then `GET /api/v1/tools`, which also proves the
    key works. Every failure names its cause and the fix.
@@ -138,6 +146,8 @@ firedrill <alias> [options]
   --use-existing-key     run on --key instead of minting (client-side budget only)
   --concurrency <n>      requests in flight, default 3
   --timeout <seconds>    per-request timeout, default 60
+  --trace                print each gateway call: step, method, path, status, latency,
+                         cost and which credential signed it (never its value)
 firedrill init [--samples <file>] [--force]
 ```
 

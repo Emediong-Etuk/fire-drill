@@ -1,0 +1,31 @@
+flowchart LR
+  dev(["Developer or CI job"]) --> cli["<b>CLI</b><br/>cli.ts · app.ts · options.ts"]
+
+  subgraph FD["Fire Drill (one process, no server)"]
+    direction TB
+    cli --> pre["<b>Preflight</b><br/>gateway/tools.ts"]
+    cli --> legs["<b>Leg resolver</b><br/>gateway/policy.ts"]
+    cli --> key["<b>Drill key</b><br/>gateway/keys.ts"]
+    cli --> load["<b>Sample loader</b><br/>samples.ts · redact.ts"]
+    load --> derive["<b>Contract deriver</b><br/>contract/derive.ts"]
+    cli --> replay["<b>Replayer</b><br/>replay.ts · budget.ts"]
+    replay --> check["<b>Checker</b><br/>contract/check.ts"]
+    derive --> check
+    check --> report["<b>Reporter</b><br/>report/table.ts · trace.ts"]
+    pre --> client
+    legs --> client
+    key --> client
+    replay --> client["<b>Gateway client</b><br/>gateway/client.ts<br/>signs each call: user, admin or drill key"]
+  end
+
+  client -- "HTTPS to --gateway only" --> otari
+
+  subgraph O["Otari gateway"]
+    direction TB
+    otari["/api/v1"] --- rp["Routing policies<br/>GET /routing/policies"]
+    otari --- vk["Virtual keys + budgets<br/>/keys · /users · /budgets"]
+    otari --- ut["Usage tracking<br/>usage.cost_usd · /key/budget"]
+    otari --- bt["Built-in tools<br/>GET /tools"]
+  end
+
+  otari --> prov(["Model providers<br/>OpenAI · OpenRouter · ..."])

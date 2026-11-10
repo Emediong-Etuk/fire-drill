@@ -125,7 +125,6 @@ export class GatewayClient {
 
     const timeout = AbortSignal.timeout(opts.timeoutMs ?? 30_000);
     const signal = opts.signal ? AbortSignal.any([timeout, opts.signal]) : timeout;
-    const step = ++this.step;
     const started = performance.now();
     let res: Response;
     try {
@@ -133,7 +132,7 @@ export class GatewayClient {
       res = await fetch(url, { method, headers, body: payload, signal, redirect: "error" });
     } catch (err) {
       const latencyMs = Math.round(performance.now() - started);
-      this.emit({ step, method, path: url.pathname, status: "ERR", latencyMs, costUsd: null, credential: opts.credential, note: opts.note });
+      this.emit({ method, path: url.pathname, status: "ERR", latencyMs, costUsd: null, credential: opts.credential, note: opts.note });
       const timedOut = timeout.aborted;
       const reason = timedOut
         ? `timed out after ${opts.timeoutMs ?? 30_000} ms`
@@ -153,7 +152,6 @@ export class GatewayClient {
       }
     }
     this.emit({
-      step,
       method,
       path: url.pathname,
       status: res.status,
@@ -165,8 +163,10 @@ export class GatewayClient {
     return { status: res.status, ok: res.ok, headers: res.headers, body: body as T, text, latencyMs };
   }
 
-  private emit(e: TraceEvent): void {
-    for (const l of this.listeners) l(e);
+  /** Steps are numbered in the order calls finish, so the trace reads top to bottom. */
+  private emit(e: Omit<TraceEvent, "step">): void {
+    const event = { step: ++this.step, ...e };
+    for (const l of this.listeners) l(event);
   }
 }
 

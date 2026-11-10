@@ -153,7 +153,7 @@ describe("secrets", () => {
     const url = await startGateway({ echoKeyInErrors: true });
     const a = await drill({ gateway: url, adminKey: ADMIN, key: USER });
     const b = await drill({ gateway: url, adminKey: ADMIN, legs: "broken:x" });
-    const child = await runChild(["fast", "--gateway", url, "--legs", "good:a,broken:b", "--samples", samples], { OTARI_ADMIN_KEY: ADMIN, OTARI_API_KEY: USER, FIREDRILL_DEBUG: "1" });
+    const child = await runChild(["fast", "--gateway", url, "--legs", "good:a,broken:b", "--samples", samples, "--trace"], { OTARI_ADMIN_KEY: ADMIN, OTARI_API_KEY: USER, FIREDRILL_DEBUG: "1" });
     const all = a.text + b.text + child.stdout + child.stderr;
     expect(gw!.mintedSecrets.length).toBeGreaterThanOrEqual(3);
     for (const secret of [ADMIN, USER, ...gw!.mintedSecrets]) expect(all).not.toContain(secret);

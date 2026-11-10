@@ -1,0 +1,30 @@
+%%{init: {"sequence": {"actorMargin": 260, "messageMargin": 28, "noteMargin": 12, "wrap": false}}}%%
+sequenceDiagram
+  autonumber
+  actor U as Developer
+  participant FD as Fire Drill
+  participant O as Otari
+  participant P as Providers
+
+  U->>FD: firedrill demo-chat
+  FD->>O: GET /api/v1/health (no key)
+  FD->>O: GET /api/v1/tools (admin key)
+  FD->>O: GET /api/v1/routing/policies (admin key)
+  O-->>FD: demo-chat: default + on_failure → 3 legs
+  FD->>O: POST /api/v1/budgets {max_budget} (admin key)
+  FD->>O: POST /api/v1/users {budget_id, allowed_models} (admin key)
+  FD->>O: POST /api/v1/keys {allowed_models, expires_at} (admin key)
+  O-->>FD: drill key (registered as a secret, never printed)
+  FD->>O: GET /api/v1/tools (drill key): web tools on?
+  loop every sample on every leg, primary first, 3 in flight
+    FD->>O: POST /api/v1/chat/completions {model: leg} (drill key)
+    O->>P: the leg's model
+    P-->>O: completion
+    O-->>FD: body + usage.cost_usd, Otari-Provider / Otari-Model
+    Note over FD,O: check the contract, add the cost to the client-side total
+  end
+  FD->>O: GET /api/v1/key/budget (drill key): gateway-recorded spend
+  FD->>O: DELETE /api/v1/keys/{id} (admin key)
+  FD->>O: DELETE /api/v1/users/{id} (admin key)
+  FD->>O: DELETE /api/v1/budgets/{id} (admin key)
+  FD-->>U: report, recommendation, exit 0 / 1 / 2

@@ -22,6 +22,7 @@ function program(onExit: (code: number) => void): Command {
     .option("--legs <a,b,c>", "use these legs instead of reading the policy")
     .option("--config <file>", "read the policy from an Otari config.yml when it can't be read over the API")
     .option("--workspace <id>", "workspace whose policy and providers the drill uses")
+    .option("--trace", "print each gateway call as it happens (never a key value)")
     .option("--fail-under <pct>", "exit 1 if any leg's pass rate is below this", "100")
     .option("--use-existing-key", "run on --key instead of minting a drill key (client-side budget only)")
     .option("--concurrency <n>", "requests in flight at once", "3")

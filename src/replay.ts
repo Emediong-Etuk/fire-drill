@@ -116,7 +116,7 @@ export async function replay(opts: ReplayOptions): Promise<Attempt[]> {
           body,
           timeoutMs: opts.timeoutMs,
           signal: opts.signal,
-          note: `leg ${job.leg.index}`,
+          note: `leg ${job.leg.index} sample ${job.sample.index}${opts.runs > 1 ? ` run ${job.run}` : ""}`,
         });
         attempt = {
           ...job,
