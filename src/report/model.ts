@@ -135,6 +135,7 @@ export function summarizeLegs(legs: Leg[], evaluated: ReturnType<typeof evaluate
       totalCostUsd: totalCost,
     };
   });
+  failures.sort((a, b) => a.leg - b.leg || a.sample - b.sample || a.run - b.run);
   return { legs: reports, failures };
 }
 

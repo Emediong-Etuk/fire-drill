@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { runCleanups } from "./cleanup.js";
 import { runDrill } from "./drill.js";
 import { describeError, DrillError, scrubError } from "./errors.js";
 import { writeStarterSamples } from "./init.js";
@@ -75,11 +76,14 @@ export async function runCli(
 
 export async function main(argv: string[]): Promise<void> {
   let code: number = EXIT.couldNotRun;
-  process.on("uncaughtException", (err) => {
+  const crash = (err: unknown) => {
     scrubError(err);
     process.stderr.write(`firedrill: ${describeError(err)}\n`);
-    process.exit(EXIT.couldNotRun);
-  });
+    // Revoke the drill key before going down.
+    void runCleanups().finally(() => process.exit(EXIT.couldNotRun));
+  };
+  process.on("uncaughtException", crash);
+  process.on("unhandledRejection", crash);
   await program((c) => (code = c)).parseAsync(argv);
   process.exitCode = code;
 }
