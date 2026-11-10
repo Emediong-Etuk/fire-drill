@@ -12,6 +12,8 @@ export interface LegReport {
   /** 0-100 */
   passRate: number;
   failuresByType: Partial<Record<FailureType, number>>;
+  /** Otari error codes behind this leg's HTTP failures, with counts. */
+  errorCodes: Record<string, number>;
   medianLatencyMs: number | null;
   costPerRequestUsd: number | null;
   projectedPer1kUsd: number | null;
@@ -26,6 +28,7 @@ export interface FailureEntry {
   contract: FailureType;
   message: string;
   excerpt?: string;
+  code?: string;
 }
 
 export interface DrillKeyReport {
@@ -84,7 +87,7 @@ export function evaluate(legs: Leg[], attempts: Attempt[]): Array<{ attempt: Att
     const p = primaryBy.get(`${a.sample.index}:${a.run}`) ?? primaryBy.get(`${a.sample.index}:1`);
     const baseline = baselineOf(p && p.status !== "SKIPPED" ? { status: p.status, leg: p.leg.model, body: p.body } : undefined);
     const failures = checkResponse(
-      { status: a.status, error: a.error, leg: a.leg.model, servedModel: a.servedModel, servedProvider: a.servedProvider, body: a.body },
+      { status: a.status, error: a.error, errorCode: a.errorCode, leg: a.leg.model, servedModel: a.servedModel, servedProvider: a.servedProvider, body: a.body },
       contractFor(a),
       baseline,
       a.leg.index === primary?.index,
@@ -109,12 +112,14 @@ export function summarizeLegs(legs: Leg[], evaluated: ReturnType<typeof evaluate
   const reports = legs.map((leg) => {
     const rows = evaluated.filter((e) => e.attempt.leg.index === leg.index);
     const byType: Partial<Record<FailureType, number>> = {};
+    const codes: Record<string, number> = {};
     let passed = 0;
     for (const { attempt, failures: fs } of rows) {
       if (fs.length === 0) passed++;
       for (const type of new Set(fs.map((f) => f.type))) byType[type] = (byType[type] ?? 0) + 1;
       for (const f of fs) {
-        failures.push({ leg: leg.index, model: leg.model, sample: attempt.sample.index, run: attempt.run, contract: f.type, message: f.message, excerpt: f.excerpt });
+        failures.push({ leg: leg.index, model: leg.model, sample: attempt.sample.index, run: attempt.run, contract: f.type, message: f.message, excerpt: f.excerpt, code: f.code });
+        if (f.code) codes[f.code] = (codes[f.code] ?? 0) + 1;
       }
     }
     const sent = rows.filter((r) => r.attempt.status !== "SKIPPED" && r.attempt.status !== "ERR");
@@ -129,6 +134,7 @@ export function summarizeLegs(legs: Leg[], evaluated: ReturnType<typeof evaluate
       passed,
       passRate: rows.length ? Math.round((passed / rows.length) * 1000) / 10 : 0,
       failuresByType: byType,
+      errorCodes: codes,
       medianLatencyMs: median(sent.map((r) => r.attempt.latencyMs)),
       costPerRequestUsd: perReq,
       projectedPer1kUsd: perReq === null ? null : perReq * 1000,
@@ -155,7 +161,9 @@ export function recommend(legs: LegReport[], threshold: number): string {
   }
   const worst = [...failing].sort((a, b) => a.passRate - b.passRate || b.index - a.index)[0]!;
   const [type, count] = Object.entries(worst.failuresByType).sort((a, b) => b[1] - a[1])[0] as [FailureType, number];
-  const what = `Leg ${worst.index} fails ${count}/${worst.total} ${TYPE_LABEL[type]}.`;
+  const topCode = Object.entries(worst.errorCodes).sort((a, b) => b[1] - a[1])[0];
+  const label = type === "http" && topCode ? `requests (Otari: ${topCode[0]})` : TYPE_LABEL[type];
+  const what = `Leg ${worst.index} fails ${count}/${worst.total} ${label}.`;
   if (worst.index === 1) return `${what} It is the primary: fix the model choice or the request before relying on this policy.`;
   const passingAfter = legs.filter((l) => l.index > worst.index && l.passRate >= threshold);
   if (passingAfter.length) return `${what} Move it below leg ${passingAfter[passingAfter.length - 1]!.index} or remove it.`;

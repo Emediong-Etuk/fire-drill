@@ -51,7 +51,7 @@ describe("checkResponse: json_schema", () => {
   it("fails JSON that breaks the schema, naming the field", () => {
     const [f] = checkResponse(obs(chat(JSON.stringify({ items: [{ product: "mug", quantity: 0 }] }))), contract, noBaseline, false);
     expect(f?.type).toBe("json_schema");
-    expect(f?.message).toMatch(/must have required property 'city'|quantity/);
+    expect(f?.message).toBe('output breaks the schema: missing "city"; "items.0.quantity" must be >= 1');
   });
   it("fails a truncated answer", () => {
     const fs = checkResponse(obs(chat('{"items": [', {}, "length")), contract, noBaseline, false);
@@ -77,7 +77,7 @@ describe("checkResponse: tools", () => {
   it("fails arguments that break the parameter schema", () => {
     const [f] = checkResponse(obs(call("get_weather", '{"city":"Lagos","unit":"kelvin"}')), contract, noBaseline, false);
     expect(f?.type).toBe("tool_call");
-    expect(f?.message).toMatch(/do not match its schema/);
+    expect(f?.message).toBe('"get_weather" arguments break its schema: "unit" must be one of "celsius", "fahrenheit"');
   });
   it("fails a call to an unknown tool", () => {
     expect(checkResponse(obs(call("get_time", "{}")), contract, noBaseline, false)[0]?.message).toMatch(/not in the request's tools/);

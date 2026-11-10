@@ -1,5 +1,5 @@
 {
-  "name": "firedrill",
+  "name": "otari-firedrill",
   "version": "0.1.0",
   "description": "Rehearse your Otari fallback routes: replay real requests down every routing-policy leg and report which legs would break your app.",
   "scripts": {
@@ -9,7 +9,8 @@
     "test": "npm run build && vitest run",
     "test:live": "FIREDRILL_LIVE=1 vitest run test/live.test.ts",
     "check": "npm run typecheck && npm run lint && npm test",
-    "prepublishOnly": "npm run check"
+    "prepublishOnly": "npm run check",
+    "prepare": "tsup"
   },
   "repository": {
     "type": "git",

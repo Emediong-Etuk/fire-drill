@@ -12,3 +12,4 @@ firedrill-report*.json
 .firedrill/
 !demo/samples.jsonl
 test/scratch/
+demo/.env

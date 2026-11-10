@@ -27,6 +27,8 @@ function program(onExit: (code: number) => void): Command {
     .option("--concurrency <n>", "requests in flight at once", "3")
     .option("--timeout <seconds>", "per-request timeout", "60")
     .option("--no-color", "plain output")
+    // Options after "init" belong to init, not to the drill.
+    .enablePositionalOptions()
     .showHelpAfterError()
     .action(async (alias: string, flags: RawFlags) => {
       onExit(await runCli(alias, flags));

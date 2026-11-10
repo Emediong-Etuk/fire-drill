@@ -38,6 +38,8 @@ export interface FakeGatewayOptions {
   webSearchEnabled?: boolean;
   /** Echo the bearer token in 500 error bodies, to test that it is scrubbed. */
   echoKeyInErrors?: boolean;
+  /** Refuse GET /api/v1/tools for drill keys: a failure after the key is minted. */
+  rejectDrillTools?: boolean;
 }
 
 const WORKSPACE = "11111111-2222-3333-4444-555555555555";
@@ -71,6 +73,8 @@ export function instanceOf(schema: Schema | undefined): unknown {
 
 export class FakeGateway {
   readonly calls: Call[] = [];
+  /** Every drill-key secret ever minted, for leak checks. */
+  readonly mintedSecrets: string[] = [];
   readonly keys = new Map<string, Key>();
   readonly users = new Map<string, { budgetId: string | null; deleted: boolean }>();
   readonly budgets = new Map<string, { max: number; spent: number }>();
@@ -151,6 +155,7 @@ export class FakeGateway {
 
     if (method === "GET" && path === "/api/v1/tools") {
       if (auth.label === "none" || auth.label === "unknown" || (auth.label === "drill" && !apiKey())) return send(401, { detail: "Invalid API key" });
+      if (auth.label === "drill" && this.opts.rejectDrillTools) return send(500, { detail: `tools exploded for ${auth.token}` });
       const web = this.webSearch.enabled;
       return send(200, {
         object: "list",
@@ -207,6 +212,7 @@ export class FakeGateway {
         workspaceId: body.workspace_id ?? WORKSPACE,
       };
       this.keys.set(key.id, key);
+      this.mintedSecrets.push(key.secret);
       return send(200, { id: key.id, key: key.secret, key_name: body.key_name, user_id: key.userId, expires_at: key.expiresAt, allowed_models: key.allowedModels, is_active: true });
     }
     m = path.match(/^\/api\/v1\/keys\/([^/]+)$/);

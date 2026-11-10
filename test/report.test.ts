@@ -10,6 +10,7 @@ function leg(index: number, passed: number, total: number, byType: LegReport["fa
     passed,
     passRate: (passed / total) * 100,
     failuresByType: byType,
+    errorCodes: {},
     medianLatencyMs: 100,
     costPerRequestUsd: per1k === null ? null : per1k / 1000,
     projectedPer1kUsd: per1k,

@@ -92,7 +92,7 @@ export async function runDrill(opts: DrillOptions, output: Output): Promise<numb
       warnings.push(`Ran on your existing key: the $${opts.budget.toFixed(2)} cap was enforced client-side only.`);
     }
     if ((tools.webSearch || tools.webFetch) && tools.answeredBy !== "admin") {
-      warnings.push("Web search or fetch is enabled in this workspace. Replays never attach web tools; pass --lock-down to switch them off for the drill.");
+      warnings.push("Web search or fetch is enabled in this workspace. Replays never attach web tools, but your app's real requests might.");
     }
 
     output.err(c.dim(`Drilling "${opts.alias}" on ${client.baseUrl}: ${legs.map((l) => `${l.index}. ${l.model}`).join("  ")}\n`));

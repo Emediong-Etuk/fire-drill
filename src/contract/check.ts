@@ -20,6 +20,8 @@ export interface Failure {
   type: FailureType;
   message: string;
   excerpt?: string;
+  /** Otari's error code, for HTTP failures. */
+  code?: string;
 }
 
 /** One response as the checker needs it. */
@@ -27,6 +29,7 @@ export interface Observed {
   status: number | "ERR";
   /** Gateway or transport error, when the call failed. */
   error?: string;
+  errorCode?: string;
   leg: string;
   servedProvider?: string | null;
   servedModel?: string | null;
@@ -65,7 +68,13 @@ function validatorFor(schema: Record<string, unknown>): ValidateFunction | Error
 function schemaErrors(v: ValidateFunction): string {
   return (v.errors ?? [])
     .slice(0, 2)
-    .map((e) => `${e.instancePath || "(root)"} ${e.message ?? "is invalid"}`)
+    .map((e) => {
+      const at = e.instancePath ? e.instancePath.slice(1).replace(/\//g, ".") : "";
+      if (e.keyword === "required") return `missing "${at ? `${at}.` : ""}${String(e.params.missingProperty)}"`;
+      if (e.keyword === "additionalProperties") return `unexpected "${at ? `${at}.` : ""}${String(e.params.additionalProperty)}"`;
+      if (e.keyword === "enum") return `"${at}" must be one of ${(e.params.allowedValues as unknown[]).map((x) => JSON.stringify(x)).join(", ")}`;
+      return `${at ? `"${at}" ` : ""}${e.message ?? "is invalid"}`;
+    })
     .join("; ");
 }
 
@@ -143,7 +152,7 @@ function checkJsonSchema(text: string, contract: NonNullable<Contract["jsonSchem
   }
   const v = validatorFor(contract.schema);
   if (v instanceof Error) return { type: "json_schema", message: `the request's schema does not compile: ${v.message}` };
-  if (!v(parsed)) return { type: "json_schema", message: `output does not match the schema: ${schemaErrors(v)}`, excerpt: excerpt(text) };
+  if (!v(parsed)) return { type: "json_schema", message: `output breaks the schema: ${schemaErrors(v)}`, excerpt: excerpt(text) };
   return undefined;
 }
 
@@ -178,7 +187,7 @@ function checkToolCalls(o: Observed, contract: Contract, baseline: PrimaryBaseli
     if (tool.parameters) {
       const v = validatorFor(tool.parameters);
       if (v instanceof Error) return { type: "tool_call", message: `the "${call.name}" parameter schema does not compile: ${v.message}` };
-      if (!v(args)) return { type: "tool_call", message: `arguments for "${call.name}" do not match its schema: ${schemaErrors(v)}`, excerpt: excerpt(call.arguments) };
+      if (!v(args)) return { type: "tool_call", message: `"${call.name}" arguments break its schema: ${schemaErrors(v)}`, excerpt: excerpt(call.arguments) };
     }
   }
   return undefined;
@@ -199,7 +208,9 @@ function checkText(o: Observed, baseline: PrimaryBaseline, isPrimary: boolean): 
  */
 export function checkResponse(o: Observed, contract: Contract, baseline: PrimaryBaseline, isPrimary: boolean): Failure[] {
   if (o.status !== 200) {
-    return [{ type: "http", message: o.error ?? `HTTP ${o.status}` }];
+    const f: Failure = { type: "http", message: o.error ?? `HTTP ${o.status}` };
+    if (o.errorCode) f.code = o.errorCode;
+    return [f];
   }
   const failures: Failure[] = [];
   const served = servedMatches(o);
