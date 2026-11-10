@@ -1,0 +1,175 @@
+import { baselineOf, checkResponse, type Failure, type FailureType } from "../contract/check.js";
+import { type Contract, deriveContract } from "../contract/derive.js";
+import type { Leg } from "../gateway/policy.js";
+import type { Attempt } from "../replay.js";
+
+export interface LegReport {
+  index: number;
+  role: string;
+  model: string;
+  total: number;
+  passed: number;
+  /** 0-100 */
+  passRate: number;
+  failuresByType: Partial<Record<FailureType, number>>;
+  medianLatencyMs: number | null;
+  costPerRequestUsd: number | null;
+  projectedPer1kUsd: number | null;
+  totalCostUsd: number;
+}
+
+export interface FailureEntry {
+  leg: number;
+  model: string;
+  sample: number;
+  run: number;
+  contract: FailureType;
+  message: string;
+  excerpt?: string;
+}
+
+export interface DrillKeyReport {
+  mode: "minted" | "existing";
+  id?: string;
+  revoked: boolean | null;
+  cleanup: string[];
+}
+
+export interface Report {
+  version: 1;
+  alias: string;
+  gateway: string;
+  runId: string;
+  startedAt: string;
+  durationMs: number;
+  legsSource: string;
+  samples: number;
+  runs: number;
+  threshold: number;
+  budgetUsd: number;
+  spentUsd: number;
+  gatewaySpentUsd: number | null;
+  stopped?: string;
+  legs: LegReport[];
+  failures: FailureEntry[];
+  recommendation: string;
+  warnings: string[];
+  drillKey: DrillKeyReport;
+  exitCode: number;
+}
+
+export function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+}
+
+/** Check every attempt and attach its failures. */
+export function evaluate(legs: Leg[], attempts: Attempt[]): Array<{ attempt: Attempt; failures: Failure[] }> {
+  const primary = legs[0];
+  const contracts = new Map<number, Contract>();
+  const contractFor = (a: Attempt) => {
+    let c = contracts.get(a.sample.index);
+    if (!c) contracts.set(a.sample.index, (c = deriveContract(a.sample.body)));
+    return c;
+  };
+  const primaryBy = new Map<string, Attempt>();
+  for (const a of attempts) if (a.leg.index === primary?.index) primaryBy.set(`${a.sample.index}:${a.run}`, a);
+
+  return attempts.map((a) => {
+    if (a.status === "SKIPPED") {
+      return { attempt: a, failures: [{ type: "skipped" as const, message: `not sent: ${a.skipReason ?? "skipped"}` }] };
+    }
+    const p = primaryBy.get(`${a.sample.index}:${a.run}`) ?? primaryBy.get(`${a.sample.index}:1`);
+    const baseline = baselineOf(p && p.status !== "SKIPPED" ? { status: p.status, leg: p.leg.model, body: p.body } : undefined);
+    const failures = checkResponse(
+      { status: a.status, error: a.error, leg: a.leg.model, servedModel: a.servedModel, servedProvider: a.servedProvider, body: a.body },
+      contractFor(a),
+      baseline,
+      a.leg.index === primary?.index,
+    );
+    return { attempt: a, failures };
+  });
+}
+
+const TYPE_LABEL: Record<FailureType, string> = {
+  json_schema: "schema checks",
+  json_object: "JSON checks",
+  tool_call: "tool-call checks",
+  text: "text checks",
+  http: "requests (HTTP errors)",
+  served_model: "served-model checks",
+  code_exec: "sandbox runs",
+  skipped: "requests (not sent)",
+};
+
+export function summarizeLegs(legs: Leg[], evaluated: ReturnType<typeof evaluate>): { legs: LegReport[]; failures: FailureEntry[] } {
+  const failures: FailureEntry[] = [];
+  const reports = legs.map((leg) => {
+    const rows = evaluated.filter((e) => e.attempt.leg.index === leg.index);
+    const byType: Partial<Record<FailureType, number>> = {};
+    let passed = 0;
+    for (const { attempt, failures: fs } of rows) {
+      if (fs.length === 0) passed++;
+      for (const type of new Set(fs.map((f) => f.type))) byType[type] = (byType[type] ?? 0) + 1;
+      for (const f of fs) {
+        failures.push({ leg: leg.index, model: leg.model, sample: attempt.sample.index, run: attempt.run, contract: f.type, message: f.message, excerpt: f.excerpt });
+      }
+    }
+    const sent = rows.filter((r) => r.attempt.status !== "SKIPPED" && r.attempt.status !== "ERR");
+    const costs = sent.map((r) => r.attempt.costUsd).filter((c): c is number => c !== null);
+    const totalCost = costs.reduce((s, c) => s + c, 0);
+    const perReq = costs.length ? totalCost / costs.length : null;
+    return {
+      index: leg.index,
+      role: leg.role,
+      model: leg.model,
+      total: rows.length,
+      passed,
+      passRate: rows.length ? Math.round((passed / rows.length) * 1000) / 10 : 0,
+      failuresByType: byType,
+      medianLatencyMs: median(sent.map((r) => r.attempt.latencyMs)),
+      costPerRequestUsd: perReq,
+      projectedPer1kUsd: perReq === null ? null : perReq * 1000,
+      totalCostUsd: totalCost,
+    };
+  });
+  return { legs: reports, failures };
+}
+
+/** One line telling the user what to change. */
+export function recommend(legs: LegReport[], threshold: number): string {
+  const failing = legs.filter((l) => l.passRate < threshold);
+  if (failing.length === 0) {
+    const priced = legs.filter((l) => l.projectedPer1kUsd !== null);
+    const cheapest = priced.sort((a, b) => a.projectedPer1kUsd! - b.projectedPer1kUsd!)[0];
+    const base = legs.length === 1 ? "The leg passes every check." : `All ${legs.length} legs pass every check.`;
+    return cheapest && legs.length > 1
+      ? `${base} Cheapest is leg ${cheapest.index} (${cheapest.model}) at $${fmtMoney(cheapest.projectedPer1kUsd!)} per 1,000 requests.`
+      : base;
+  }
+  if (failing.every((l) => (l.failuresByType.skipped ?? 0) === l.total)) {
+    return "The drill stopped before these legs ran. Raise --budget or lower --runs and run it again.";
+  }
+  const worst = [...failing].sort((a, b) => a.passRate - b.passRate || b.index - a.index)[0]!;
+  const [type, count] = Object.entries(worst.failuresByType).sort((a, b) => b[1] - a[1])[0] as [FailureType, number];
+  const what = `Leg ${worst.index} fails ${count}/${worst.total} ${TYPE_LABEL[type]}.`;
+  if (worst.index === 1) return `${what} It is the primary: fix the model choice or the request before relying on this policy.`;
+  const passingAfter = legs.filter((l) => l.index > worst.index && l.passRate >= threshold);
+  if (passingAfter.length) return `${what} Move it below leg ${passingAfter[passingAfter.length - 1]!.index} or remove it.`;
+  if (worst.index === legs[legs.length - 1]!.index) return `${what} Remove it or replace it with a model that passes.`;
+  return `${what} Remove it, or move it below the legs that pass.`;
+}
+
+export function fmtMoney(usd: number): string {
+  if (usd === 0) return "0";
+  if (usd >= 0.1) return usd.toFixed(2);
+  if (usd >= 0.001) return usd.toFixed(4);
+  return usd.toFixed(6);
+}
+
+/** Exit code for a finished drill: 1 when any leg is below the threshold. */
+export function exitCodeFor(legs: LegReport[], threshold: number): 0 | 1 {
+  return legs.some((l) => l.passRate < threshold) ? 1 : 0;
+}

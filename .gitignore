@@ -11,3 +11,4 @@ samples.jsonl
 firedrill-report*.json
 .firedrill/
 !demo/samples.jsonl
+test/scratch/
