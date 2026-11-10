@@ -1,0 +1,13 @@
+vendor-ref/
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+# Fire Drill samples and reports (may contain prompts)
+samples.jsonl
+*.samples.jsonl
+firedrill-report*.json
+.firedrill/
+!demo/samples.jsonl
