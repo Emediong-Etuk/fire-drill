@@ -1,0 +1,32 @@
+# Otari config for the Fire Drill demo. Mounted as /app/config.yml.
+# Secrets come from the environment (demo/.env, written by run-demo.sh).
+host: "0.0.0.0"
+port: 8000
+default_pricing: true
+# Serve the providers below from this file, so the prices here apply.
+import_configured_providers: false
+
+providers:
+  # Real models for the passing legs. One key reaches many vendors.
+  openrouter:
+    api_key: ${OPENROUTER_API_KEY}
+  # The deliberately failing leg: a local stub that always answers in prose,
+  # never JSON. See demo/fake-leg/README.md. It is NOT a real model.
+  drillfake:
+    provider_type: openai
+    api_base: ${FIREDRILL_FAKE_LEG_URL}
+    api_key: not-a-real-key
+    models:
+      - prose-only
+
+pricing:
+  # The stub costs nothing to run; price it like a small model so the
+  # report has a number to show.
+  drillfake:prose-only:
+    input_price_per_million: 0.05
+    output_price_per_million: 0.10
+  # Sandbox runs (firedrill --run-code calls POST /api/v1/code/execute).
+  # Priced per call; 1000 per million = $0.001 a run.
+  otari:code_execution:
+    input_price_per_million: 1000
+    output_price_per_million: 0

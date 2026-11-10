@@ -1,0 +1,22 @@
+# Layered on Otari's own docker-compose.yml by demo/run-demo.sh:
+#   docker compose -f <otari>/docker-compose.yml -f demo/docker-compose.override.yml ...
+services:
+  otari:
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY to an OpenRouter key}
+      - FIREDRILL_FAKE_LEG_URL=${FIREDRILL_FAKE_LEG_URL:-http://fake-leg:9100/v1}
+    depends_on:
+      fake-leg:
+        condition: service_started
+
+  # The failing leg. Runs on the Otari image's own Python, so the demo pulls
+  # no extra image. Reachable only inside the compose network (and on
+  # 127.0.0.1:9100 for curl).
+  fake-leg:
+    image: docker.io/mzdotai/otari:latest
+    entrypoint: ["python", "/fake-leg/server.py"]
+    volumes:
+      - ${FIREDRILL_DEMO_DIR:?run demo/run-demo.sh}/fake-leg:/fake-leg:ro
+    ports:
+      - "127.0.0.1:9100:9100"
+    restart: unless-stopped
