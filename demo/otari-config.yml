@@ -25,3 +25,8 @@ pricing:
   drillfake:prose-only:
     input_price_per_million: 0.05
     output_price_per_million: 0.10
+  # Sandbox runs (firedrill --run-code calls POST /api/v1/code/execute).
+  # Priced per call; 1000 per million = $0.001 a run.
+  otari:code_execution:
+    input_price_per_million: 1000
+    output_price_per_million: 0

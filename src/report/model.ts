@@ -1,7 +1,9 @@
 import { baselineOf, checkResponse, type Failure, type FailureType } from "../contract/check.js";
 import { type Contract, deriveContract } from "../contract/derive.js";
 import type { Leg } from "../gateway/policy.js";
+import { excerpt } from "../redact.js";
 import type { Attempt } from "../replay.js";
+import { lastErrorLine } from "../sandbox.js";
 
 export interface LegReport {
   index: number;
@@ -92,6 +94,14 @@ export function evaluate(legs: Leg[], attempts: Attempt[]): Array<{ attempt: Att
       baseline,
       a.leg.index === primary?.index,
     );
+    const run = a.codeRun;
+    if (run && !run.ok) {
+      failures.push(
+        run.error
+          ? { type: "code_exec", message: run.error }
+          : { type: "code_exec", message: `Python block exits ${run.returnCode}: ${lastErrorLine(run.stderr) || "no stderr"}`, excerpt: excerpt(run.stderr) },
+      );
+    }
     return { attempt: a, failures };
   });
 }

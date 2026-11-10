@@ -35,9 +35,12 @@ export class BudgetTracker {
     return this.maxSeen > 0 ? this.maxSeen * this.margin : this.initialEstimate;
   }
 
-  /** Reserve room for one request. Returns a token, or null when it would pass the cap. */
-  reserve(): number | null {
-    const est = this.estimate();
+  /**
+   * Reserve room for one request. Returns a token, or null when it would pass
+   * the cap. `knownCost` replaces the estimate when the price is known up front.
+   */
+  reserve(knownCost?: number): number | null {
+    const est = knownCost ?? this.estimate();
     if (this.spent + this.reserved + est > this.capUsd + 1e-12) return null;
     const id = ++this.nextId;
     this.open.set(id, est);
@@ -58,6 +61,15 @@ export class BudgetTracker {
     const actual = costUsd ?? est;
     this.spent += actual;
     if (costUsd !== null && costUsd > this.maxSeen) this.maxSeen = costUsd;
+  }
+
+  /** Settle without letting this cost raise the per-request estimate (a tool call, not a completion). */
+  settleTool(token: number, costUsd: number): void {
+    const est = this.open.get(token);
+    if (est === undefined) return;
+    this.open.delete(token);
+    this.reserved -= est;
+    this.spent += costUsd;
   }
 
   /** Release a reservation for a request that was never sent. */

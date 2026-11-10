@@ -39,6 +39,8 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Extra label for the trace line, such as the leg number. */
   note?: string;
+  /** Cost to show in the trace when a successful body reports none (a priced tool call). */
+  knownCostUsd?: number;
 }
 
 /** A failure to reach the gateway at all (DNS, refused, timeout). */
@@ -156,7 +158,7 @@ export class GatewayClient {
       path: url.pathname,
       status: res.status,
       latencyMs,
-      costUsd: costFromBody(body),
+      costUsd: costFromBody(body) ?? (res.ok && opts.knownCostUsd !== undefined ? opts.knownCostUsd : null),
       credential: opts.credential,
       note: opts.note,
     });

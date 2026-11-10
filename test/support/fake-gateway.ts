@@ -7,6 +7,7 @@
  *   badjson:*  answers in prose, so JSON and schema checks fail
  *   broken:*   answers 500 every time
  *   slow:*     waits `slowMs` before answering like good:*
+ *   badcode:*  like good:*, but its text answers carry Python that raises
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -322,6 +323,7 @@ export class FakeGateway {
       return { role: "assistant", content: JSON.stringify(instanceOf(body.response_format.json_schema?.schema)) };
     }
     if (body.response_format?.type === "json_object") return { role: "assistant", content: '{"ok": true}' };
+    if (provider === "badcode") return { role: "assistant", content: "Try this:\n\n```python\nprint(undefined_name)\n```" };
     return { role: "assistant", content: "Open the sign-in page and choose 'Forgot password'.\n\n```python\nprint('ok')\n```" };
   }
 }

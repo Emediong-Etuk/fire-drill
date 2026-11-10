@@ -2,7 +2,10 @@ import { Command } from "commander";
 import { runCleanups } from "./cleanup.js";
 import { runDrill } from "./drill.js";
 import { describeError, DrillError, scrubError } from "./errors.js";
+import { GatewayClient } from "./gateway/client.js";
+import { checkHealth } from "./gateway/tools.js";
 import { writeStarterSamples } from "./init.js";
+import { startRecorder } from "./record.js";
 import { type Output, processOutput } from "./io.js";
 import { buildOptions, type RawFlags } from "./options.js";
 import { registerSecret } from "./redact.js";
@@ -22,6 +25,11 @@ function program(onExit: (code: number) => void): Command {
     .option("--legs <a,b,c>", "use these legs instead of reading the policy")
     .option("--config <file>", "read the policy from an Otari config.yml when it can't be read over the API")
     .option("--workspace <id>", "workspace whose policy and providers the drill uses")
+    .option("--run-code", "run each answer's first Python block in Otari's sandbox (POST /api/v1/code/execute)")
+    .option("--lock-down", "switch the workspace's web search and fetch off for the drill, then restore them")
+    .option("--json", "print the report as JSON on stdout")
+    .option("--out <file>", "also write the JSON report to this file (mode 0600)")
+    .option("--record [port]", "instead of drilling, run a local pass-through that records requests to <alias> into --samples (default port 8787)")
     .option("--trace", "print each gateway call as it happens (never a key value)")
     .option("--fail-under <pct>", "exit 1 if any leg's pass rate is below this", "100")
     .option("--use-existing-key", "run on --key instead of minting a drill key (client-side budget only)")
@@ -31,8 +39,8 @@ function program(onExit: (code: number) => void): Command {
     // Options after "init" belong to init, not to the drill.
     .enablePositionalOptions()
     .showHelpAfterError()
-    .action(async (alias: string, flags: RawFlags) => {
-      onExit(await runCli(alias, flags));
+    .action(async (alias: string, flags: RawFlags & { record?: boolean | string }) => {
+      onExit(flags.record !== undefined ? await runRecord(alias, flags) : await runCli(alias, flags));
     });
 
   cmd
@@ -52,6 +60,43 @@ export async function runInit(path: string, force: boolean, output: Output = pro
     output.out(`Wrote 3 starter samples to ${path} (mode 0600). Next: firedrill <policy-name>\n`);
     return EXIT.ok;
   } catch (err) {
+    output.err(`firedrill: ${describeError(err)}\n`);
+    return EXIT.couldNotRun;
+  }
+}
+
+/** `--record [port]`: run the recorder until SIGINT/SIGTERM. */
+export async function runRecord(
+  alias: string,
+  flags: RawFlags & { record?: boolean | string },
+  env: NodeJS.ProcessEnv = process.env,
+  output: Output = processOutput(false),
+  stop: Promise<unknown> = new Promise((r) => {
+    process.once("SIGINT", r);
+    process.once("SIGTERM", r);
+  }),
+): Promise<number> {
+  try {
+    const port = typeof flags.record === "string" ? Number(flags.record) : 8787;
+    if (!Number.isInteger(port) || port < 0 || port > 65535) throw new DrillError(`--record port "${flags.record}" is not a port number.`, "Pass a port such as --record 8787.");
+    const gateway = flags.gateway ?? env.OTARI_BASE_URL ?? "http://localhost:8000";
+    const client = new GatewayClient(gateway);
+    await checkHealth(client);
+    const samplesPath = flags.samples ?? "samples.jsonl";
+    const rec = await startRecorder({ gateway, alias, samplesPath, port, output }).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") throw new DrillError(`Port ${port} is already in use.`, "Pass another port, for example --record 8788.");
+      throw err;
+    });
+    output.err(
+      `Recording chat completions for "${alias}" into ${samplesPath} (mode 0600), forwarding to ${client.baseUrl}.\n` +
+        `Point your app's OpenAI base URL at ${rec.url}/api/v1 and use it as usual. Ctrl-C stops.\n`,
+    );
+    await stop;
+    await rec.close();
+    output.out(`Recorded ${rec.recorded()} request${rec.recorded() === 1 ? "" : "s"} to ${samplesPath}. Next: firedrill ${alias} --samples ${samplesPath}\n`);
+    return EXIT.ok;
+  } catch (err) {
+    scrubError(err);
     output.err(`firedrill: ${describeError(err)}\n`);
     return EXIT.couldNotRun;
   }

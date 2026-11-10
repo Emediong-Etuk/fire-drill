@@ -1,6 +1,7 @@
 import type { BudgetTracker } from "./budget.js";
 import { costFromBody, type Credential, errorCode, errorDetail, type GatewayClient, TransportError } from "./gateway/client.js";
 import type { Leg } from "./gateway/policy.js";
+import type { CodeRun } from "./sandbox.js";
 import type { Sample } from "./samples.js";
 
 export interface Attempt {
@@ -18,6 +19,8 @@ export interface Attempt {
   errorCode?: string;
   skipReason?: string;
   retried: boolean;
+  /** Set by --run-code when the answer had a Python block. */
+  codeRun?: CodeRun;
 }
 
 export interface ReplayOptions {

@@ -10,7 +10,10 @@ import { colors, type Output } from "./io.js";
 import type { DrillOptions } from "./options.js";
 import { type Attempt, replay } from "./replay.js";
 import { type DrillKeyReport, evaluate, exitCodeFor, recommend, type Report, summarizeLegs } from "./report/model.js";
+import { renderJson, writePrivateFile } from "./report/json.js";
 import { renderTable } from "./report/table.js";
+import { runSandboxChecks } from "./sandbox.js";
+import { WebLockDown } from "./gateway/workspace.js";
 import { loadSamples } from "./samples.js";
 import { formatTrace, TRACE_HEADER } from "./trace.js";
 
@@ -61,6 +64,12 @@ export async function runDrill(opts: DrillOptions, output: Output): Promise<numb
   await checkHealth(client);
   const preflightCred: Credential = opts.key ? "user" : "admin";
   let tools = await checkTools(client, preflightCred);
+  if (opts.runCode && !tools.codeExecution) {
+    throw new DrillError(
+      "--run-code needs Otari's code sandbox, and this gateway reports it unavailable.",
+      "Start it with docker compose --profile code-exec up -d in your Otari checkout, or drop --run-code.",
+    );
+  }
 
   // 2. Resolve legs.
   const resolved = await resolveLegs(client, { alias: opts.alias, legsFlag: opts.legs, configPath: opts.config, workspaceId: opts.workspace });
@@ -74,7 +83,11 @@ export async function runDrill(opts: DrillOptions, output: Output): Promise<numb
   const drillKey = new DrillKey(client);
   const keyReport: DrillKeyReport = { mode: opts.useExistingKey ? "existing" : "minted", revoked: null, cleanup: [] };
   const signals = watchSignals(() => output.err(c.yellow("\nStill revoking the drill key, one moment.\n")));
-  const unregister = registerCleanup(() => drillKey.revoke());
+  let lockDown: WebLockDown | undefined;
+  const unregister = registerCleanup(async () => {
+    await lockDown?.restore();
+    await drillKey.revoke();
+  });
   let credential: Credential = "user";
   let attempts: Attempt[] | undefined;
   let gatewaySpent: number | null = null;
@@ -96,8 +109,22 @@ export async function runDrill(opts: DrillOptions, output: Output): Promise<numb
     } else {
       warnings.push(`Ran on your existing key: the $${opts.budget.toFixed(2)} cap was enforced client-side only.`);
     }
+    if (opts.lockDown) {
+      const workspaceId = (await drillKey.workspaceId()) ?? opts.workspace ?? resolved.workspaceId;
+      if (!workspaceId) throw new DrillError("--lock-down needs to know the workspace.", "Pass --workspace <id>.");
+      lockDown = new WebLockDown(client, workspaceId);
+      const switched = await lockDown.apply();
+      if (switched) {
+        tools = await checkTools(client, credential);
+        warnings.push("Web search and fetch were switched off for the drill (--lock-down) and switched back on afterwards.");
+      }
+    }
     if ((tools.webSearch || tools.webFetch) && tools.answeredBy !== "admin") {
-      warnings.push("Web search or fetch is enabled in this workspace. Replays never attach web tools, but your app's real requests might.");
+      warnings.push(
+        opts.lockDown
+          ? "Web search or fetch is still enabled after --lock-down. Replays never attach web tools."
+          : "Web search or fetch is enabled in this workspace. Replays never attach web tools; --lock-down switches them off for the drill.",
+      );
     }
 
     output.err(c.dim(`Drilling "${opts.alias}" on ${client.baseUrl}: ${legs.map((l) => `${l.index}. ${l.model}`).join("  ")}\n`));
@@ -115,11 +142,21 @@ export async function runDrill(opts: DrillOptions, output: Output): Promise<numb
       signal: signals.signal,
       runId,
     });
+    // 7. Optional sandbox check, in Otari's sandbox only.
+    if (opts.runCode && !signals.received()) {
+      const ran = await runSandboxChecks({ client, credential, attempts, budget, concurrency: opts.concurrency, signal: signals.signal });
+      if (ran === 0) warnings.push("--run-code: no answer contained a fenced Python block, so nothing was run.");
+    }
     if (!signals.received()) {
       await settleMissingCosts(client, credential, attempts);
       if (credential === "drill") gatewaySpent = await gatewaySpend(client);
     }
   } finally {
+    const restoreError = await lockDown?.restore();
+    if (restoreError) {
+      warnings.push(restoreError);
+      output.err(c.red(`${restoreError}\n`));
+    }
     if (drillKey.minted || drillKey.budgetId || drillKey.userId) {
       const result = await drillKey.revoke();
       keyReport.revoked = result.revoked;
@@ -161,6 +198,8 @@ export async function runDrill(opts: DrillOptions, output: Output): Promise<numb
     // A key left behind is a safety failure, whatever the legs did.
     exitCode: keyReport.mode === "minted" && keyReport.revoked === false ? 2 : exitCodeFor(legReports, opts.failUnder),
   };
-  output.out(renderTable(report, output.color));
+  if (opts.out) await writePrivateFile(opts.out, renderJson(report));
+  if (opts.json) output.out(renderJson(report));
+  else output.out(renderTable(report, output.color));
   return report.exitCode;
 }

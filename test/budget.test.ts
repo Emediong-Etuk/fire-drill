@@ -45,3 +45,16 @@ describe("BudgetTracker", () => {
     expect(b.spentUsd).toBe(0);
   });
 });
+
+describe("BudgetTracker with known tool prices", () => {
+  it("reserves the known price and does not let it inflate the completion estimate", () => {
+    const b = new BudgetTracker(0.025, { initialEstimateUsd: 0.001 });
+    const t1 = b.reserve(0.01)!;
+    const t2 = b.reserve(0.01)!;
+    expect(b.reserve(0.01)).toBeNull();
+    b.settleTool(t1, 0.01);
+    b.settleTool(t2, 0.01);
+    expect(b.spentUsd).toBeCloseTo(0.02);
+    expect(b.estimate()).toBeCloseTo(0.001);
+  });
+});
