@@ -34,7 +34,7 @@ dashboard signed in on **Overview → Requests**.
 | 2:37 | Safety | Budget is enforced twice: Otari refuses past the drill budget, and a client-side total reserves before each send and stops before the cap. |
 | 2:46 | | The key is revoked in a finally block, on Ctrl-C, on SIGTERM and on a crash. If revoking fails, the exit code is two and the fix is printed. |
 | 2:55 | | Replays never carry web tools or MCP servers. Model output never runs locally. Lint fails the build if the source imports child process or vm. |
-| 3:05 | Tests | The suite: ninety-one tests in about nine seconds. |
+| 3:05 | Tests | The suite: ninety-six tests in about eleven seconds. |
 | 3:09 | | The integration tests run whole drills against a fake Otari: same routes, same shapes, with a good leg, a bad-JSON leg and a broken leg. |
 | 3:18 | | These two spawn the real CLI, send SIGINT or SIGTERM mid-replay, and check the key, user and budget were deleted. |
 | 3:26 | | The secrets test uses canary keys, makes the fake gateway echo the token in errors, and greps all output, trace included. |
@@ -56,7 +56,7 @@ Word count: 611.
 | 2:31 | Terminal. Type command 2. |
 | 2:37 to 3:05 | `README.md`, section "Safety model". At 2:55 show `eslint.config.js`, the `no-restricted-imports` block. |
 | 3:05 | Terminal. Type command 3, then command 4. |
-| 3:09 to 3:34 | The verbose list from command 4; highlight "on SIGINT", "on SIGTERM" and "secrets". |
+| 3:09 to 3:34 | The verbose list from command 4 (12 tests); highlight "on SIGINT", "on SIGTERM" and "secrets". |
 | 3:34 | Type command 5. |
 | 3:49 | `README.md`, section "Limitations". |
 | 3:59 | `README.md`, section "Roadmap", then the repo URL. |
@@ -170,8 +170,8 @@ Expected ending (tsup's build lines come first):
 
 ```text
  Test Files  11 passed | 1 skipped (12)
-      Tests  91 passed | 1 skipped (92)
-   Duration  8.77s (tests 90%, import 8%, transform 1%, worker 1%)
+      Tests  96 passed | 1 skipped (97)
+   Duration  11.14s (tests 93%, import 5%, transform 2%)
 ```
 
 The skipped file is the live test, which needs `FIREDRILL_LIVE=1` (command 5).
@@ -183,18 +183,19 @@ npx vitest run test/integration.test.ts --reporter=verbose
 ```
 
 ```text
-✓ test/integration.test.ts > a drill against a policy with a broken and a bad-JSON leg > reports each leg, recommends a change, exits 1 and revokes the key 1351ms
-✓ test/integration.test.ts > a drill against a policy with a broken and a bad-JSON leg > replays on the drill key only, never the admin or user key 1499ms
-✓ test/integration.test.ts > exit codes > exits 0 when every leg passes 31ms
-✓ test/integration.test.ts > exit codes > honours --fail-under 26ms
-✓ test/integration.test.ts > exit codes > exits 2 with the fix when the gateway is down 7ms
-✓ test/integration.test.ts > exit codes > exits 2 and still revokes the key when the drill fails after minting 16ms
-✓ test/integration.test.ts > budget enforcement > stops when the gateway refuses on the drill key's budget, and reports what was not sent 20ms
-✓ test/integration.test.ts > budget enforcement > enforces the cap client-side on an existing key 11ms
-✓ test/integration.test.ts > secrets > never prints the user, admin or drill key, even when the gateway echoes one 4263ms
-✓ test/integration.test.ts > on SIGINT > stops the drill, revokes the key and exits 2 271ms
-✓ test/integration.test.ts > on SIGTERM > stops the drill, revokes the key and exits 2 293ms
-Tests  11 passed (11)
+✓ test/integration.test.ts > a drill against a policy with a broken and a bad-JSON leg > reports each leg, recommends a change, exits 1 and revokes the key 1521ms
+✓ test/integration.test.ts > a drill against a policy with a broken and a bad-JSON leg > replays on the drill key only, never the admin or user key 1455ms
+✓ test/integration.test.ts > exit codes > exits 0 when every leg passes 22ms
+✓ test/integration.test.ts > exit codes > blames the gateway, not a leg, when every leg fails every request 2787ms
+✓ test/integration.test.ts > exit codes > honours --fail-under 25ms
+✓ test/integration.test.ts > exit codes > exits 2 with the fix when the gateway is down 5ms
+✓ test/integration.test.ts > exit codes > exits 2 and still revokes the key when the drill fails after minting 11ms
+✓ test/integration.test.ts > budget enforcement > stops when the gateway refuses on the drill key's budget, and reports what was not sent 18ms
+✓ test/integration.test.ts > budget enforcement > enforces the cap client-side on an existing key 9ms
+✓ test/integration.test.ts > secrets > never prints the user, admin or drill key, even when the gateway echoes one 4461ms
+✓ test/integration.test.ts > on SIGINT > stops the drill, revokes the key and exits 2 273ms
+✓ test/integration.test.ts > on SIGTERM > stops the drill, revokes the key and exits 2 257ms
+Tests  12 passed (12)
 ```
 
 (Shown without vitest's indentation.)
