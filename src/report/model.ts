@@ -156,7 +156,7 @@ export function summarizeLegs(legs: Leg[], evaluated: ReturnType<typeof evaluate
 }
 
 /** One line telling the user what to change. */
-export function recommend(legs: LegReport[], threshold: number): string {
+export function recommend(legs: LegReport[], threshold: number, failures: FailureEntry[] = []): string {
   const failing = legs.filter((l) => l.passRate < threshold);
   if (failing.length === 0) {
     const priced = legs.filter((l) => l.projectedPer1kUsd !== null);
@@ -171,6 +171,21 @@ export function recommend(legs: LegReport[], threshold: number): string {
   const broken = failing.filter((l) => realFailures(l).length > 0);
   if (broken.length === 0) {
     return "The drill stopped before every request was sent. Raise --budget or lower --runs and run it again.";
+  }
+  // Every leg refused every request it sent: the gateway or its providers are down,
+  // so blaming the last leg would send the user to fix the wrong thing.
+  const allDown =
+    legs.length > 1 &&
+    legs.every((l) => {
+      const http = l.failuresByType.http ?? 0;
+      return l.passed === 0 && http > 0 && http + (l.failuresByType.skipped ?? 0) === l.total;
+    });
+  if (allDown) {
+    const first = failures.find((f) => f.contract === "http")?.message;
+    return (
+      `Every leg failed every request with an HTTP error, so the gateway or its providers are at fault, not one leg${first ? ` (first error: ${first})` : ""}. ` +
+      "Check Otari's provider settings and network access, then run the drill again."
+    );
   }
   const incomplete = legs.some((l) => (l.failuresByType.skipped ?? 0) > 0) ? " Some requests were not sent, so raise --budget for a full drill." : "";
   const worst = [...broken].sort((a, b) => a.passRate - b.passRate || b.index - a.index)[0]!;

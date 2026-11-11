@@ -54,6 +54,29 @@ describe("median", () => {
   });
 });
 
+describe("recommend when every leg is down", () => {
+  const down = (i: number) => leg(i, 0, 5, { http: 5 });
+  const failure = { leg: 1, model: "p:m1", sample: 1, run: 1, contract: "http" as const, message: "502 The gateway could not connect to the provider" };
+
+  it("blames the gateway, not the last leg", () => {
+    expect(recommend([down(1), down(2), down(3)], 100, [failure])).toBe(
+      "Every leg failed every request with an HTTP error, so the gateway or its providers are at fault, not one leg (first error: 502 The gateway could not connect to the provider). Check Otari's provider settings and network access, then run the drill again.",
+    );
+  });
+
+  it("still names a leg when any leg got through", () => {
+    expect(recommend([leg(1, 1, 5, { http: 4 }), down(2)], 100, [failure])).toMatch(/^Leg 2 fails 5\/5 requests/);
+  });
+
+  it("still names a leg when the failures are not HTTP errors", () => {
+    expect(recommend([leg(1, 0, 5, { json_schema: 5 }), down(2)], 100, [failure])).toMatch(/^Leg 2 fails 5\/5 requests/);
+  });
+
+  it("keeps the per-leg advice for a single-leg drill", () => {
+    expect(recommend([down(1)], 100, [failure])).toMatch(/^Leg 1 fails 5\/5 requests .* It is the primary/);
+  });
+});
+
 describe("recommend with requests that were not sent", () => {
   it("never blames a leg for requests the budget stopped", () => {
     const legs = [leg(1, 5, 5), leg(2, 3, 5, { skipped: 2 }), leg(3, 0, 5, { skipped: 5 })];
