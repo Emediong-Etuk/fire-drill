@@ -105,6 +105,14 @@ describe("exit codes", () => {
     expectCleanedUp(gw!);
   });
 
+  it("blames the gateway, not a leg, when every leg fails every request", async () => {
+    const url = await startGateway();
+    const { code, stdout } = await drill({ gateway: url, adminKey: ADMIN, legs: "broken:a,broken:b" });
+    expect(code).toBe(1);
+    expect(stdout).toContain("Every leg failed every request with an HTTP error, so the gateway or its providers are at fault, not one leg (first error: 500 Provider error).");
+    expectCleanedUp(gw!);
+  });
+
   it("honours --fail-under", async () => {
     const url = await startGateway();
     const { code } = await drill({ gateway: url, adminKey: ADMIN, legs: "good:a,badjson:b", failUnder: "30" });

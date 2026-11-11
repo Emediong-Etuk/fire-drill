@@ -192,7 +192,7 @@ export async function runDrill(opts: DrillOptions, output: Output): Promise<numb
     stopped: skipped?.skipReason,
     legs: legReports,
     failures,
-    recommendation: recommend(legReports, opts.failUnder),
+    recommendation: recommend(legReports, opts.failUnder, failures),
     warnings,
     drillKey: keyReport,
     // A key left behind is a safety failure, whatever the legs did.

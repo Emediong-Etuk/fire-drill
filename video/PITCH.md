@@ -146,6 +146,10 @@ bootstrap  active=true
   ```
 
   Run `demo/reset.sh` without the variable to go back to Gemma.
+- **Every leg shows `0/5` and `http 5`.** The last line then reads "Every leg failed every
+  request with an HTTP error, so the gateway or its providers are at fault, not one leg".
+  Otari cannot reach OpenRouter: check `OPENROUTER_API_KEY` and your network, run
+  `demo/reset.sh`, and record again. Don't film this take.
 - **The web-search warning line.** It appears because Otari's default workspace allows
   web search. It is accurate and harmless; leave it in, or skip over it in narration.
 - **No key list in the dashboard.** You are signed out: sign in with the master key
