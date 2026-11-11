@@ -10,8 +10,8 @@ legs only run when the primary fails or a budget cap fires, which means in produ
 on the worst day. Fire Drill sends your real requests down every leg ahead of time and
 tells you which legs would break your app.
 
-**Videos:** [90-second pitch](https://youtu.be/63MKmGHBbZQ) ·
-[4-minute technical walkthrough](https://youtu.be/ZBIyt2jhovY)
+**Videos:** [pitch](https://youtu.be/63MKmGHBbZQ) ·
+[technical walkthrough](https://youtu.be/ZBIyt2jhovY)
 
 ## 30-second quickstart
 
