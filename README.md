@@ -1,5 +1,7 @@
 # Fire Drill
 
+[![CI](https://github.com/Emediong-Etuk/fire-drill/actions/workflows/ci.yml/badge.svg)](https://github.com/Emediong-Etuk/fire-drill/actions/workflows/ci.yml)
+
 **Rehearse your Otari fallback routes before an outage does it for you.**
 
 An [Otari](https://github.com/mozilla-ai/otari) routing policy puts several models
@@ -244,6 +246,9 @@ npm ci
 npm run check        # typecheck, lint, build, tests
 FIREDRILL_LIVE=1 OTARI_ADMIN_KEY=... FIREDRILL_LIVE_ALIAS=demo-chat npm run test:live
 ```
+
+CI (`.github/workflows/ci.yml`) runs `npm run check` on Node 20, 22 and 24 for every
+push to `main` and every pull request. The live test needs a running Otari, so CI skips it.
 
 `NOTES.md` records how each Otari API used here was confirmed, with file and line
 references into Otari's source.
