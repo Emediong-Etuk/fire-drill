@@ -2,13 +2,13 @@
 
 Ready to paste into the hackathon form. Pick the length each field allows. Every number
 here comes from runs made while building the project (Otari `1726b58`, local Docker,
-real models through OpenRouter). Fill in the two video links before submitting.
+real models through OpenRouter).
 
 ## Links
 
 - Repository: https://github.com/Emediong-Etuk/fire-drill
-- Pitch video: `<paste link>`
-- Technical walkthrough: `<paste link>`
+- Pitch video: https://youtu.be/63MKmGHBbZQ
+- Technical walkthrough: https://youtu.be/ZBIyt2jhovY
 - npm: `otari-firedrill` (only once you have run `npm publish`; otherwise leave it out)
 
 ## Name
